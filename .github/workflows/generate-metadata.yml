@@ -1,0 +1,46 @@
+name: Generate Verification Metadata
+
+on: 
+  workflow_dispatch: # Allows you to click a button to run this
+
+jobs:
+  generate-safe:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Create Safe Repo Injector
+        # We reuse the specific "Safe" init script logic here
+        run: |
+          cat <<EOF > ./fix-repos.gradle
+          allprojects {
+              repositories {
+                  maven { 
+                      url "https://maven.ftb.dev/public" 
+                      content { includeGroup "dev.ftb.mods"; includeGroup "dev.latvian.mods" }
+                  }
+                  maven { url "https://maven.parchmentmc.org" }
+                  mavenCentral()
+              }
+          }
+          EOF
+
+      - name: Generate Metadata
+        # We use the gradle wrapper included in the repo, just in case
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --init-script ./fix-repos.gradle --write-verification-metadata sha256 help
+
+      - name: Upload Result
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-metadata
+          path: gradle/verification-metadata.xml
