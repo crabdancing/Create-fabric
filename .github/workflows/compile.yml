@@ -13,30 +13,33 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # 1. Install Java 21, which sets the $JAVA_HOME env var
       - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
 
+      # 2. Setup Gradle (handles caching)
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-        with:
-          # Optimization: Cache the enormous amount of Minecraft assets so
-          # the second build doesn't take 5 minutes downloading sounds.
-          cache-read-only: false
+      
+      # 3. THE FIX: Force org.gradle.java.home via configuration file
+      # Passing -D flags to gradlew sometimes gets eaten by the launcher before the daemon sees it.
+      # Writing it to the user's gradle.properties is the inescapable way to set the Daemon JVM.
+      - name: Force Gradle to use Java 21
+        run: |
+          mkdir -p ~/.gradle
+          echo "org.gradle.java.home=$JAVA_HOME" >> ~/.gradle/gradle.properties
+          echo "org.gradle.jvmargs=-Xmx3g" >> ~/.gradle/gradle.properties
 
       - name: Build with Gradle
-        # We explicitly pass -Dorg.gradle.java.home=$JAVA_HOME
-        # $JAVA_HOME is set by the 'Setup Java 21' step.
-        # This forces the Gradle Daemon to run on the correct JVM.
         run: |
           chmod +x gradlew
-          ./gradlew build --no-daemon -Dorg.gradle.java.home=$JAVA_HOME -Dfabric.loom.ci=true
+          ./gradlew build --no-daemon
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: mod-jars
-          # Adjust this path if Create outputs differently, usually it's here
           path: build/libs/*.jar 
