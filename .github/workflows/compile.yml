@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
   push:
     branches: [ "master", "main" ]
-    tags: [ "v*" ]
 
 jobs:
   build:
@@ -22,22 +21,22 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
+        with:
+          # Optimization: Cache the enormous amount of Minecraft assets so
+          # the second build doesn't take 5 minutes downloading sounds.
+          cache-read-only: false
 
       - name: Build with Gradle
-        # This does EVERYTHING:
-        # 1. Downloads Minecraft
-        # 2. Downloads Mappings
-        # 3. Downloads Dependencies
-        # 4. Remaps jars
-        # 5. Compiles code
+        # We explicitly pass -Dorg.gradle.java.home=$JAVA_HOME
+        # $JAVA_HOME is set by the 'Setup Java 21' step.
+        # This forces the Gradle Daemon to run on the correct JVM.
         run: |
           chmod +x gradlew
-          ./gradlew build --no-daemon
+          ./gradlew build --no-daemon -Dorg.gradle.java.home=$JAVA_HOME -Dfabric.loom.ci=true
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: mod-jars
-          # Uploads only the final output jars, ignoring sources/dev jars if you want
-          path: build/libs/*-all.jar 
-          # Or just: build/libs/*.jar if you want everything
+          # Adjust this path if Create outputs differently, usually it's here
+          path: build/libs/*.jar 
