@@ -1,0 +1,43 @@
+name: Build Mod (Imperial Style)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "master", "main" ]
+    tags: [ "v*" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build with Gradle
+        # This does EVERYTHING:
+        # 1. Downloads Minecraft
+        # 2. Downloads Mappings
+        # 3. Downloads Dependencies
+        # 4. Remaps jars
+        # 5. Compiles code
+        run: |
+          chmod +x gradlew
+          ./gradlew build --no-daemon
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mod-jars
+          # Uploads only the final output jars, ignoring sources/dev jars if you want
+          path: build/libs/*-all.jar 
+          # Or just: build/libs/*.jar if you want everything
