@@ -31,8 +31,41 @@ jobs:
       - name: Validate Gradle Wrapper Integrity
         uses: gradle/actions/wrapper-validation@v3
 
+      # ------------------------------------------------------------------
+      # THE FIX: Create the Init Script to remove broken FTB dependencies
+      # ------------------------------------------------------------------
+      - name: Inject Dependency Fixer
+        run: |
+          cat <<EOF > ./fix-deps.gradle
+          allprojects {
+              // Add the repo just in case
+              repositories {
+                  maven { url "https://maven.ftb.dev/public" }
+                  maven { url "https://maven.parchmentmc.org" }
+                  mavenCentral()
+              }
+              
+              // Forcefully remove the missing FTB mods from the dependency list
+              // BEFORE Gradle tries to resolve them.
+              afterEvaluate { project ->
+                  project.configurations.all { config ->
+                      if (config.state == Configuration.State.UNRESOLVED) {
+                          config.dependencies.removeIf { dep ->
+                              if (dep.group == 'dev.ftb.mods') {
+                                  println ":: NUKE :: Removing dependency: " + dep.group + ":" + dep.name
+                                  return true
+                              }
+                              return false
+                          }
+                      }
+                  }
+              }
+          }
+          EOF
+
       - name: Build
-        run: ./gradlew build
+        # We add --init-script ./fix-deps.gradle to apply the fix
+        run: ./gradlew build --init-script ./fix-deps.gradle
 
       # TODO: Enable when gametests work
       # - name: Run Gametests
@@ -41,18 +74,18 @@ jobs:
       - name: Publish to Maven [Releases]
         if: ${{ github.event.inputs.release }}
         run: >-
-          ./gradlew publishAllPublicationsToDevOsReleasesRepository
+          ./gradlew publishAllPublicationsToDevOsReleasesRepository 
+          --init-script ./fix-deps.gradle
           -PdevOsReleasesUsername="${{ secrets.MAVEN_USER }}"
           -PdevOsReleasesPassword="${{ secrets.MAVEN_PASS }}"
 
       - name: Publish to Maven [Snapshots]
         if: ${{ !github.event.inputs.release }}
         run: >-
-          ./gradlew publishAllPublicationsToDevOsSnapshotsRepository
+          ./gradlew publishAllPublicationsToDevOsSnapshotsRepository 
+          --init-script ./fix-deps.gradle
           -PdevOsSnapshotsUsername="${{ secrets.MAVEN_USER }}"
           -PdevOsSnapshotsPassword="${{ secrets.MAVEN_PASS }}"
-
-      # TODO: add back CF and MR publishing at some point
 
       - name: Capture Build Artifacts
         uses: actions/upload-artifact@v4
