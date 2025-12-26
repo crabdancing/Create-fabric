@@ -1,7 +1,7 @@
 name: Generate Verification Metadata
 
 on: 
-  workflow_dispatch: # Allows you to click a button to run this
+  workflow_dispatch:
 
 jobs:
   generate-safe:
@@ -17,24 +17,32 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Create Safe Repo Injector
-        # We reuse the specific "Safe" init script logic here
+      - name: Create Repo Fix & Exclusion Script
+        # This script does two things:
+        # 1. Adds the official FTB maven (just in case)
+        # 2. FORCE EXCLUDES the missing FTB artifacts so Gradle stops panicking
         run: |
           cat <<EOF > ./fix-repos.gradle
           allprojects {
               repositories {
-                  maven { 
-                      url "https://maven.ftb.dev/public" 
-                      content { includeGroup "dev.ftb.mods"; includeGroup "dev.latvian.mods" }
-                  }
+                  maven { url "https://maven.ftb.dev/public" }
                   maven { url "https://maven.parchmentmc.org" }
                   mavenCentral()
+              }
+              
+              // The Nuclear Option:
+              // Since the 2001.x versions of these mods are 404 Not Found on the internet,
+              // we force Gradle to remove them from the dependency graph entirely.
+              configurations.all {
+                  exclude group: 'dev.ftb.mods', module: 'ftb-chunks-fabric'
+                  exclude group: 'dev.ftb.mods', module: 'ftb-teams-fabric'
+                  exclude group: 'dev.ftb.mods', module: 'ftb-library-fabric'
               }
           }
           EOF
 
       - name: Generate Metadata
-        # We use the gradle wrapper included in the repo, just in case
+        # We use the gradle wrapper included in the repo
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon --init-script ./fix-repos.gradle --write-verification-metadata sha256 help
