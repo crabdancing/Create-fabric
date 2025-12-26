@@ -17,10 +17,10 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Create Repo Fix & Exclusion Script
-        # This script does two things:
-        # 1. Adds the official FTB maven (just in case)
-        # 2. FORCE EXCLUDES the missing FTB artifacts so Gradle stops panicking
+      - name: Create Repo Fix & Dependency Nuke Script
+        # This script uses 'afterEvaluate' to modify the dependency list in memory.
+        # It physically removes the broken FTB mods from the compile list 
+        # before Gradle attempts to resolve the URL.
         run: |
           cat <<EOF > ./fix-repos.gradle
           allprojects {
@@ -30,19 +30,26 @@ jobs:
                   mavenCentral()
               }
               
-              // The Nuclear Option:
-              // Since the 2001.x versions of these mods are 404 Not Found on the internet,
-              // we force Gradle to remove them from the dependency graph entirely.
-              configurations.all {
-                  exclude group: 'dev.ftb.mods', module: 'ftb-chunks-fabric'
-                  exclude group: 'dev.ftb.mods', module: 'ftb-teams-fabric'
-                  exclude group: 'dev.ftb.mods', module: 'ftb-library-fabric'
+              afterEvaluate { project ->
+                  println ":: SCANNING configurations for broken FTB dependencies in " + project.name
+                  
+                  project.configurations.all { config ->
+                      // Check if the configuration can be modified
+                      if (config.state == Configuration.State.UNRESOLVED) {
+                          config.dependencies.removeIf { dep ->
+                              if (dep.group == 'dev.ftb.mods') {
+                                  println ":: NUKE :: Removing directly declared dependency: " + dep.group + ":" + dep.name
+                                  return true
+                              }
+                              return false
+                          }
+                      }
+                  }
               }
           }
           EOF
 
       - name: Generate Metadata
-        # We use the gradle wrapper included in the repo
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon --init-script ./fix-repos.gradle --write-verification-metadata sha256 help
